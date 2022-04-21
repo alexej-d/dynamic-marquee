@@ -1,7 +1,8 @@
 import { DIRECTION } from './direction.js';
 import { SizeWatcher } from './size-watcher.js';
 
-const transitionDuration = 60000;
+// const transitionDuration = 12000; // TODO
+const transitionDuration = 60000; // TODO
 
 export class Item {
   constructor($el, direction) {

@@ -37,6 +37,7 @@ or
   type="text/javascript"
   src="https://cdn.jsdelivr.net/npm/dynamic-marquee@2"
 ></script>
+
 <script type="text/javascript">
   const Marquee = dynamicMarquee.Marquee;
 </script>
@@ -119,6 +120,8 @@ To remove all items call
 ```js
 marquee.clear();
 ```
+
+You should also call this before removing the marquee from the DOM if you no longer need it to ensure that all timers are cleaned up and garbage collection can occur.
 
 ## When has an item been removed?
 

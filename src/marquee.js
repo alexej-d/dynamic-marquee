@@ -3,6 +3,7 @@ import { DIRECTION } from './direction.js';
 import { defer, deferException, toDomEl } from './helpers.js';
 import { SizeWatcher } from './size-watcher.js';
 
+// TODO if container size is 0 pretend rate is 0?
 export class Marquee {
   constructor(
     $container,
@@ -15,7 +16,6 @@ export class Marquee {
       startOnScreen = false,
     } = {}
   ) {
-    this._rendering = false;
     this._waitingForItem = true;
     this._nextItemImmediatelyFollowsPrevious = startOnScreen;
     this._rate = rate;
@@ -73,9 +73,6 @@ export class Marquee {
 
     if (!rate !== !this._rate) {
       this._enableAnimationHint(!!rate);
-      if (rate) {
-        this._scheduleRender(true);
-      }
     }
 
     if (rate * this._lastEffectiveRate < 0) {
@@ -97,6 +94,8 @@ export class Marquee {
     if (rate) {
       this._lastEffectiveRate = rate;
     }
+
+    this._tick();
   }
 
   getRate() {
@@ -129,11 +128,7 @@ export class Marquee {
     this._waitingForItem = false;
     this._pendingItem = new Item($el, this._direction);
     this._pendingItem.enableAnimationHint(!!this._rate);
-    if (this._rendering) {
-      this._render(0);
-    } else {
-      this._scheduleRender(true);
-    }
+    this._tick();
   }
 
   _removeItem(item) {
@@ -176,22 +171,14 @@ export class Marquee {
     this._items.forEach(({ item }) => item.enableAnimationHint(enable));
   }
 
-  _scheduleRender(immediate) {
-    if (immediate) {
-      if (this._renderTimer) window.clearTimeout(this._renderTimer);
-      this._renderTimer = null;
-    }
-
+  _scheduleRender() {
     if (!this._renderTimer) {
       // ideally we'd use requestAnimationFrame here but there's a bug in
       // chrome which means when the callback is called it triggers a style
       // recalculation even when nothing changes, which is not efficient
       // see https://bugs.chromium.org/p/chromium/issues/detail?id=1252311
       // and https://stackoverflow.com/q/69293778/1048589
-      this._renderTimer = window.setTimeout(
-        () => this._tick(),
-        immediate ? 0 : 100
-      );
+      this._renderTimer = window.setTimeout(() => this._tick(), 100);
     }
   }
 
@@ -202,6 +189,7 @@ export class Marquee {
   }
 
   _tick() {
+    this._renderTimer && clearTimeout(this._renderTimer);
     this._renderTimer = null;
 
     if (!this._items.length && !this._pendingItem) {
@@ -217,24 +205,24 @@ export class Marquee {
     const timePassed = this._lastUpdateTime ? now - this._lastUpdateTime : 0;
     this._lastUpdateTime = now;
 
-    this._rendering = true;
     const shiftAmount = this._lastRate * (timePassed / 1000);
     this._lastRate = this._rate;
     this._containerSize =
       this._direction === DIRECTION.RIGHT
         ? this._containerSizeWatcher.getWidth()
         : this._containerSizeWatcher.getHeight();
-    deferException(() => this._render(shiftAmount));
-    this._rendering = false;
 
-    if (this._rate) {
-      this._scheduleRender();
-    } else {
-      this._cleanup();
-    }
+    // TODO
+    // if (this._containerSize > 0) {
+    deferException(() => this._render(shiftAmount));
+    // }
+
+    this._scheduleRender();
   }
 
   _render(shiftAmount) {
+    console.log(shiftAmount);
+    const renderStartTime = performance.now(); // TODO can use?
     this._leftItemOffset += shiftAmount;
     const containerSize = this._containerSize;
     if (this._rate < 0) {
@@ -270,6 +258,7 @@ export class Marquee {
       this._nextItemImmediatelyFollowsPrevious = false;
     }
 
+    const hack = !!this._pendingItem; // TODO
     if (this._pendingItem) {
       this._$container.appendChild(this._pendingItem.getContainer());
       if (this._rate <= 0) {
@@ -331,13 +320,19 @@ export class Marquee {
       this._containerSize !== this._previousContainerSize;
     this._previousContainerSize = this._containerSize;
 
+    // TODO use performance.now to account for delay of the dom operations so position
+    // correct when writing it
+    // const startTime = performance.now(); // TODO helper?
     offsets.forEach((offset, i) => {
       const item = this._items[i];
       const hasJumped = Math.abs(item.offset + shiftAmount - offset) >= 1;
+      const fix = ((performance.now() - renderStartTime) / 1000) * this._rate;
+      // console.log(fix);
       item.item.setOffset(
-        offset,
+        offset - fix,
+        // offset,
         this._rate,
-        containerSizeChanged || hasJumped
+        containerSizeChanged || hasJumped || (hack && i < 50)
       );
       item.offset = offset;
     });
@@ -370,8 +365,8 @@ export class Marquee {
       this._onItemRequired.some((cb) => {
         return deferException(() => {
           nextItem = cb({
-            immediatelyFollowsPrevious:
-              this._nextItemImmediatelyFollowsPrevious,
+            immediatelyFollowsPrevious: this
+              ._nextItemImmediatelyFollowsPrevious,
           });
           return !!nextItem;
         });
