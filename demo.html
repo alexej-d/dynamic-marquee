@@ -32,17 +32,17 @@
       }));
       const items = ['m'];
 
-        marquee.onItemRequired(() => {
-          const next = items[0];
-          if (items.length > 1) items.shift();
-          return next;
-        });
+      marquee.onItemRequired(() => {
+        const next = items[0];
+        if (items.length > 1) items.shift();
+        return next;
+      });
 
-        marquee.appendItem(items[0]);
+      marquee.appendItem(items[0]);
 
-        // setTimeout(() => {
-        //   items.push('.');
-        // }, 4000);
+      // setTimeout(() => {
+      //   items.push('.');
+      // }, 4000);
 
       // window.l = dynamicMarquee.loop(
       //   marquee,
