@@ -3,6 +3,7 @@ import { SizeWatcher } from './size-watcher.js';
 
 // const transitionDuration = 12000; // TODO
 const transitionDuration = 60000; // TODO
+// const transitionDuration = 3000; // TODO
 
 export class Item {
   constructor($el, direction) {
@@ -33,11 +34,13 @@ export class Item {
       : this._sizeWatcher.getHeight();
   }
   setOffset(offset, rate, force) {
+    // force = true; // TODO remove
     const transitionState = this._transitionState;
     const rateChanged = !transitionState || transitionState.rate !== rate;
     if (transitionState && !force) {
       const timePassed = performance.now() - transitionState.time;
-      if (timePassed < transitionDuration - 10000 && !rateChanged) {
+      // if (timePassed < transitionDuration - 10000 && !rateChanged) {
+      if (timePassed < transitionDuration - 1000 && !rateChanged) {
         return;
       }
     }
@@ -53,15 +56,15 @@ export class Item {
       this._$container.offsetLeft;
     }
 
+    if (rate) {
+      this._$container.style.transition = `transform ${transitionDuration}ms linear`;
+    }
+
     const futureOffset = offset + (rate / 1000) * transitionDuration;
     if (this._direction === DIRECTION.RIGHT) {
       this._$container.style.transform = `translateX(${futureOffset}px)`;
     } else {
       this._$container.style.transform = `translateY(${futureOffset}px)`;
-    }
-
-    if (rate) {
-      this._$container.style.transition = `transform ${transitionDuration}ms linear`;
     }
 
     this._transitionState = {

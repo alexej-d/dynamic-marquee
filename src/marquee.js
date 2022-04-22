@@ -3,6 +3,14 @@ import { DIRECTION } from './direction.js';
 import { defer, deferException, toDomEl } from './helpers.js';
 import { SizeWatcher } from './size-watcher.js';
 
+// TODO check
+// - what happens when empty
+// - what happens when change direction
+// - when resize
+// - when tab frozen
+
+// TODO change so that there is a correlation that is fixed, and offsets of items are based off that and also fixed. Resync if hitting max int
+
 // TODO if container size is 0 pretend rate is 0?
 export class Marquee {
   constructor(
@@ -22,12 +30,14 @@ export class Marquee {
     this._lastRate = 0;
     this._lastEffectiveRate = rate;
     this._justReversedRate = false;
+    this._correlation = null;
+    // TODO needed? also check other props
     this._lastUpdateTime = null;
     this._direction = upDown ? DIRECTION.DOWN : DIRECTION.RIGHT;
     this._onItemRequired = [];
     this._onItemRemoved = [];
     this._onAllItemsRemoved = [];
-    this._leftItemOffset = 0;
+    this._windowOffset = 0;
     this._containerSize = 0;
     this._previousContainerSize = null;
     this._containerSizeWatcher = null;
@@ -78,15 +88,16 @@ export class Marquee {
     if (rate * this._lastEffectiveRate < 0) {
       this._justReversedRate = !this._justReversedRate;
 
-      if (rate <= 0) {
-        const containerSize = this._containerSize;
-        let nextOffset = this._leftItemOffset;
-        this._items.forEach(({ item }) => {
-          nextOffset += item.getSize();
-        });
-        this._waitingForItem = nextOffset <= containerSize;
-      } else {
-        this._waitingForItem = this._leftItemOffset >= 0;
+      if (this._items) {
+        const firstItem = this._items[0];
+        const lastItem = this._items[this._items.length - 1];
+        // TODO extract common logic
+        this._waitingForItem =
+          (this._rate <= 0 &&
+            this._windowOffset + lastItem.offset + lastItem.item.getSize() <=
+              containerSize) ||
+          (this._rate > 0 && this._windowOffset - firstItem.offset > 0);
+        this._nextItemImmediatelyFollowsPrevious = false;
       }
     }
 
@@ -106,6 +117,7 @@ export class Marquee {
     this._items.forEach(({ item }) => this._removeItem(item));
     this._items = [];
     this._waitingForItem = true;
+    this._nextItemImmediatelyFollowsPrevious = false;
     this._updateContainerInverseSize();
   }
 
@@ -188,6 +200,7 @@ export class Marquee {
     this._lastUpdateTime = null;
   }
 
+  // TODO move this into _render?
   _tick() {
     this._renderTimer && clearTimeout(this._renderTimer);
     this._renderTimer = null;
@@ -202,10 +215,20 @@ export class Marquee {
     }
 
     const now = performance.now();
-    const timePassed = this._lastUpdateTime ? now - this._lastUpdateTime : 0;
-    this._lastUpdateTime = now;
 
-    const shiftAmount = this._lastRate * (timePassed / 1000);
+    if (this._correlation) {
+      const timePassed = now - this._correlation.time;
+      this._windowOffset =
+        this._correlation.offset + this._lastRate * (timePassed / 1000);
+    }
+
+    if (!this._correlation || this._rate !== this._lastRate) {
+      this._correlation = {
+        time: now,
+        offset: this._windowOffset,
+      };
+    }
+
     this._lastRate = this._rate;
     this._containerSize =
       this._direction === DIRECTION.RIGHT
@@ -214,42 +237,24 @@ export class Marquee {
 
     // TODO
     // if (this._containerSize > 0) {
-    deferException(() => this._render(shiftAmount));
+    deferException(() => this._render());
     // }
 
     this._scheduleRender();
   }
 
-  _render(shiftAmount) {
-    console.log(shiftAmount);
-    const renderStartTime = performance.now(); // TODO can use?
-    this._leftItemOffset += shiftAmount;
+  _render() {
     const containerSize = this._containerSize;
-    if (this._rate < 0) {
-      while (this._items.length) {
-        const { item } = this._items[0];
-        const size = item.getSize();
-        if (this._leftItemOffset + size > 0) {
-          break;
-        }
-        this._removeItem(item);
-        this._items.shift();
-        this._leftItemOffset += size;
-      }
-    }
+    const containerSizeChanged = containerSize !== this._previousContainerSize;
+    this._previousContainerSize = containerSize;
 
-    const offsets = [];
-    let nextOffset = this._leftItemOffset;
-    this._items.some(({ item }, i) => {
-      if (nextOffset >= containerSize) {
-        if (this._rate > 0) {
-          this._items.splice(i).forEach((a) => this._removeItem(a.item));
-          return true;
-        }
-      }
-      offsets.push(nextOffset);
-      nextOffset += item.getSize();
-      return false;
+    this._items = this._items.filter(({ item, offset }) => {
+      const keep =
+        this._rate < 0
+          ? this._windowOffset + offset + item.getSize() > 0
+          : this._windowOffset + offset < containerSize;
+      if (!keep) this._removeItem(item); // TODO defer callback out with my other lib
+      return keep;
     });
 
     const justReversedRate = this._justReversedRate;
@@ -258,88 +263,30 @@ export class Marquee {
       this._nextItemImmediatelyFollowsPrevious = false;
     }
 
-    const hack = !!this._pendingItem; // TODO
     if (this._pendingItem) {
       this._$container.appendChild(this._pendingItem.getContainer());
       if (this._rate <= 0) {
-        if (!this._nextItemImmediatelyFollowsPrevious) {
-          // insert virtual item so that it starts off screen
-          this._items.push({
-            item: new VirtualItem(Math.max(0, containerSize - nextOffset)),
-            offset: nextOffset,
-          });
-          offsets.push(nextOffset);
-          nextOffset = containerSize;
-        }
-        this._items.push({
-          item: this._pendingItem,
-          offset: nextOffset,
-        });
-        offsets.push(nextOffset);
-        nextOffset += this._pendingItem.getSize();
+        // TODO scrap virtual item
+        this._items = [
+          ...this._items,
+          {
+            item: this._pendingItem,
+            offset: this._windowOffset + containerSize,
+          },
+        ];
       } else {
-        if (this._nextItemImmediatelyFollowsPrevious && !this._items.length) {
-          this._leftItemOffset = containerSize;
-        } else if (
-          !this._nextItemImmediatelyFollowsPrevious &&
-          this._items.length &&
-          this._leftItemOffset > 0
-        ) {
-          this._items.unshift({
-            item: new VirtualItem(this._leftItemOffset),
-            offset: 0,
-          });
-          offsets.unshift(0);
-          this._leftItemOffset = 0;
-        }
-        this._leftItemOffset -= this._pendingItem.getSize();
-        offsets.unshift(this._leftItemOffset);
-        this._items.unshift({
-          item: this._pendingItem,
-          offset: this._leftItemOffset,
-        });
+        this._items = [
+          {
+            item: this._pendingItem,
+            offset: this._windowOffset - this._pendingItem.getSize(),
+          },
+          ...this._items,
+        ];
       }
       this._pendingItem = null;
     }
 
-    // trim virtual items
-    while (this._items.length && this._items[0].item instanceof VirtualItem) {
-      offsets.shift();
-      this._items.shift();
-      this._leftItemOffset = offsets[0] || 0;
-    }
-    while (
-      this._items.length &&
-      this._items[this._items.length - 1].item instanceof VirtualItem
-    ) {
-      offsets.pop();
-      this._items.pop();
-    }
-
-    const containerSizeChanged =
-      this._containerSize !== this._previousContainerSize;
-    this._previousContainerSize = this._containerSize;
-
-    // TODO use performance.now to account for delay of the dom operations so position
-    // correct when writing it
-    // const startTime = performance.now(); // TODO helper?
-    offsets.forEach((offset, i) => {
-      const item = this._items[i];
-      const hasJumped = Math.abs(item.offset + shiftAmount - offset) >= 1;
-      const fix = ((performance.now() - renderStartTime) / 1000) * this._rate;
-      // console.log(fix);
-      item.item.setOffset(
-        offset - fix,
-        // offset,
-        this._rate,
-        containerSizeChanged || hasJumped || (hack && i < 50)
-      );
-      item.offset = offset;
-    });
-    this._updateContainerInverseSize();
-
     if (!this._items.length) {
-      this._leftItemOffset = 0;
       defer(() => {
         this._onAllItemsRemoved.forEach((cb) => {
           deferException(() => cb());
@@ -347,35 +294,70 @@ export class Marquee {
       });
     }
 
+    this._items.reduce((newOffset, item) => {
+      let changed = false;
+      // console.log('!!', item.offset);
+      if (newOffset !== null && item.offset < newOffset) {
+        // the size of the item before has increased and would now be overlapping
+        // this one, so shuffle this one along
+        changed = true;
+        item.offset = newOffset;
+      }
+      const jumped = containerSizeChanged || changed;
+      // setTimeout(() => {
+      // const liveWindowOffset =
+      //   this._correlation.offset +
+      //   this._rate * ((performance.now() - this._correlation.time) / 1000);
+      // item.item.setOffset(liveWindowOffset + item.offset, this._rate, jumped);
+      item.item.setOffset(this._windowOffset + item.offset, this._rate, jumped);
+      // }, 0);
+      return item.offset + item.item.getSize();
+    }, null);
+
+    this._updateContainerInverseSize();
+
     this._nextItemImmediatelyFollowsPrevious = false;
 
-    if (
-      !this._waitingForItem &&
-      ((this._rate <= 0 && nextOffset <= containerSize) ||
-        (this._rate > 0 && this._leftItemOffset >= 0))
-    ) {
-      this._waitingForItem = true;
-      // if an item is appended immediately below, it would be considered immediately following
-      // the previous if we haven't just changed direction.
-      // This is useful when deciding whether to add a separator on the side that enters the
-      // screen first or not
-      this._nextItemImmediatelyFollowsPrevious = !justReversedRate;
-
-      let nextItem;
-      this._onItemRequired.some((cb) => {
-        return deferException(() => {
-          nextItem = cb({
-            immediatelyFollowsPrevious:
-              this._nextItemImmediatelyFollowsPrevious,
-          });
-          return !!nextItem;
-        });
-      });
-      if (nextItem) {
-        // Note appendItem() will call _render() synchronously again
-        this.appendItem(nextItem);
+    if (!this._waitingForItem) {
+      if (this._items.length) {
+        const firstItem = this._items[0];
+        const lastItem = this._items[this._items.length - 1];
+        if (
+          (this._rate <= 0 &&
+            this._windowOffset + lastItem.offset + lastItem.item.getSize() <=
+              containerSize) ||
+          (this._rate > 0 && this._windowOffset - firstItem.offset > 0)
+        ) {
+          this._waitingForItem = true;
+          // if an item is appended immediately below, it would be considered immediately following
+          // the previous if we haven't just changed direction.
+          // This is useful when deciding whether to add a separator on the side that enters the
+          // screen first or not
+          this._nextItemImmediatelyFollowsPrevious = !justReversedRate;
+        }
+      } else {
+        this._waitingForItem = true;
+        this._nextItemImmediatelyFollowsPrevious = false;
       }
-      this._nextItemImmediatelyFollowsPrevious = false;
+
+      if (this._waitingForItem) {
+        let nextItem;
+        this._onItemRequired.some((cb) => {
+          return deferException(() => {
+            nextItem = cb({
+              immediatelyFollowsPrevious: this
+                ._nextItemImmediatelyFollowsPrevious,
+            });
+            return !!nextItem;
+          });
+        });
+        if (nextItem) {
+          // TODO
+          // Note appendItem() will call _render() synchronously again
+          this.appendItem(nextItem);
+        }
+        this._nextItemImmediatelyFollowsPrevious = false;
+      }
     }
   }
 }
