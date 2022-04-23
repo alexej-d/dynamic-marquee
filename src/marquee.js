@@ -219,7 +219,7 @@ export class Marquee {
     if (this._correlation) {
       const timePassed = now - this._correlation.time;
       this._windowOffset =
-        this._correlation.offset + this._lastRate * (timePassed / 1000);
+        this._correlation.offset + this._lastRate * -1 * (timePassed / 1000);
     }
 
     if (!this._correlation || this._rate !== this._lastRate) {
@@ -251,8 +251,8 @@ export class Marquee {
     this._items = this._items.filter(({ item, offset }) => {
       const keep =
         this._rate < 0
-          ? this._windowOffset + offset + item.getSize() > 0
-          : this._windowOffset + offset < containerSize;
+          ? offset + item.getSize() - this._windowOffset > 0
+          : offset - this._windowOffset < containerSize;
       if (!keep) this._removeItem(item); // TODO defer callback out with my other lib
       return keep;
     });
@@ -267,6 +267,7 @@ export class Marquee {
       this._$container.appendChild(this._pendingItem.getContainer());
       if (this._rate <= 0) {
         // TODO scrap virtual item
+        // console.log('!!', containerSize);
         this._items = [
           ...this._items,
           {
@@ -300,8 +301,9 @@ export class Marquee {
       if (newOffset !== null && item.offset < newOffset) {
         // the size of the item before has increased and would now be overlapping
         // this one, so shuffle this one along
-        changed = true;
-        item.offset = newOffset;
+        // TODO
+        // changed = true;
+        // item.offset = newOffset;
       }
       const jumped = containerSizeChanged || changed;
       // setTimeout(() => {
@@ -309,7 +311,18 @@ export class Marquee {
       //   this._correlation.offset +
       //   this._rate * ((performance.now() - this._correlation.time) / 1000);
       // item.item.setOffset(liveWindowOffset + item.offset, this._rate, jumped);
-      item.item.setOffset(this._windowOffset + item.offset, this._rate, jumped);
+
+      item.item.setOffset(
+        () =>
+          item.offset -
+          (this._correlation.offset +
+            this._rate *
+              -1 *
+              ((performance.now() - this._correlation.time) / 1000)),
+        // () => item.offset - this._windowOffset,
+        this._rate,
+        jumped
+      );
       // }, 0);
       return item.offset + item.item.getSize();
     }, null);
@@ -324,9 +337,9 @@ export class Marquee {
         const lastItem = this._items[this._items.length - 1];
         if (
           (this._rate <= 0 &&
-            this._windowOffset + lastItem.offset + lastItem.item.getSize() <=
+            lastItem.offset + lastItem.item.getSize() - this._windowOffset <=
               containerSize) ||
-          (this._rate > 0 && this._windowOffset - firstItem.offset > 0)
+          (this._rate > 0 && firstItem.offset - this._windowOffset > 0)
         ) {
           this._waitingForItem = true;
           // if an item is appended immediately below, it would be considered immediately following
@@ -345,8 +358,8 @@ export class Marquee {
         this._onItemRequired.some((cb) => {
           return deferException(() => {
             nextItem = cb({
-              immediatelyFollowsPrevious:
-                this._nextItemImmediatelyFollowsPrevious,
+              immediatelyFollowsPrevious: this
+                ._nextItemImmediatelyFollowsPrevious,
             });
             return !!nextItem;
           });
