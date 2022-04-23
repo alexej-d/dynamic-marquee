@@ -30,7 +30,7 @@
       var marquee = (window.m = new dynamicMarquee.Marquee($marquee, {
         rate: -100,
       }));
-      const items = ['.', '.','.','.'];
+      const items = ['.', '.', '.', '.'];
 
       marquee.onItemRequired(() => {
         const next = items[0];
@@ -38,7 +38,6 @@
         // items.shift();
         return next;
       });
-
 
       marquee.appendItem(items[0]);
 
