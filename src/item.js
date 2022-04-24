@@ -47,7 +47,7 @@ export class Item {
       }
     }
 
-    force = true; // TODO
+    // force = true; // TODO
 
     let offset = null;
 
@@ -62,14 +62,13 @@ export class Item {
       if (this._direction === DIRECTION.RIGHT) {
         // console.log('!!', hack - offset);
 
-        this._$container.style.left = `${offset}px`;
-        // this._$container.style.transform = `translateX(${offset}px)`;
+        // this._$container.style.left = `${offset}px`;
+        this._$container.style.transform = `translateX(${offset}px)`;
       } else {
         this._$container.style.transform = `translateY(${offset}px)`;
       }
 
-      this._$container.style.transition = `left 1ms linear`;
-      // this._$container.style.transition = '';
+      this._$container.style.transition = '';
       // console.time('reflow1');
       this._$container.offsetLeft;
       // console.timeEnd('reflow1');
@@ -79,10 +78,10 @@ export class Item {
       // }
     }
 
-    if (rate) {
+    if (rate && rateChanged) {
       // this._$container.style.transition = `transform ${transitionDuration}ms linear`;
       // this._$container.style.transition = `left ${transitionDuration}ms linear`;`;
-      this._$container.style.transition = `left ${transitionDuration}ms linear`;
+      this._$container.style.transition = `transform ${transitionDuration}ms linear`;
       // this._$container.style.transitionDelay = `1s`;
     }
 
@@ -90,8 +89,8 @@ export class Item {
 
     const futureOffset = offset + (rate / 1000) * transitionDuration;
     if (this._direction === DIRECTION.RIGHT) {
-      // this._$container.style.transform = `translateX(${futureOffset}px)`;
-      this._$container.style.left = `${futureOffset}px`;
+      this._$container.style.transform = `translateX(${futureOffset}px)`;
+      // this._$container.style.left = `${futureOffset}px`;
     } else {
       this._$container.style.transform = `translateY(${futureOffset}px)`;
     }
@@ -104,7 +103,7 @@ export class Item {
     };
   }
   enableAnimationHint(enable) {
-    // this._$container.style.willChange = enable ? 'transform' : 'auto';
+    this._$container.style.willChange = enable ? 'transform' : 'auto';
   }
   remove() {
     this._sizeWatcher.tearDown();

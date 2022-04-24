@@ -3,6 +3,8 @@ import { DIRECTION } from './direction.js';
 import { defer, deferException, toDomEl } from './helpers.js';
 import { SizeWatcher } from './size-watcher.js';
 
+// TODO actually just translate container instead?
+
 // TODO check
 // - what happens when empty
 // - what happens when change direction
@@ -358,8 +360,8 @@ export class Marquee {
         this._onItemRequired.some((cb) => {
           return deferException(() => {
             nextItem = cb({
-              immediatelyFollowsPrevious:
-                this._nextItemImmediatelyFollowsPrevious,
+              immediatelyFollowsPrevious: this
+                ._nextItemImmediatelyFollowsPrevious,
             });
             return !!nextItem;
           });
