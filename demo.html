@@ -34,8 +34,8 @@
 
       marquee.onItemRequired(() => {
         const next = items[0];
-        if (items.length > 1) items.shift();
-        // items.shift();
+        // if (items.length > 1) items.shift();
+        items.shift();
         return next;
       });
 

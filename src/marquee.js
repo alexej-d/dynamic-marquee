@@ -1,4 +1,5 @@
 import { Item, VirtualItem } from './item.js';
+import { Slider } from './slider.js';
 import { DIRECTION } from './direction.js';
 import { defer, deferException, toDomEl } from './helpers.js';
 import { SizeWatcher } from './size-watcher.js';
@@ -56,6 +57,9 @@ export class Marquee {
     }
     this._updateContainerInverseSize();
     $container.appendChild($innerContainer);
+
+    // TODO move somewhere sensible
+    this._slider = new Slider($innerContainer, this._direction);
   }
 
   // called when there's room for a new item.
@@ -181,6 +185,7 @@ export class Marquee {
     }
   }
 
+  // TODO remove
   _enableAnimationHint(enable) {
     this._items.forEach(({ item }) => item.enableAnimationHint(enable));
   }
@@ -237,6 +242,12 @@ export class Marquee {
         ? this._containerSizeWatcher.getWidth()
         : this._containerSizeWatcher.getHeight();
 
+    this._slider.setOffset(
+      this._windowOffset * -1,
+      this._rate,
+      false /* TODO */
+    );
+
     // TODO
     // if (this._containerSize > 0) {
     deferException(() => this._render());
@@ -247,6 +258,7 @@ export class Marquee {
 
   _render() {
     const containerSize = this._containerSize;
+    // TODO needed?
     const containerSizeChanged = containerSize !== this._previousContainerSize;
     this._previousContainerSize = containerSize;
 
@@ -299,32 +311,33 @@ export class Marquee {
 
     this._items.reduce((newOffset, item) => {
       let changed = false;
-      // console.log('!!', item.offset);
       if (newOffset !== null && item.offset < newOffset) {
         // the size of the item before has increased and would now be overlapping
         // this one, so shuffle this one along
-        // TODO
-        // changed = true;
-        // item.offset = newOffset;
+        changed = true;
+        item.offset = newOffset;
       }
-      const jumped = containerSizeChanged || changed;
+      // const jumped = containerSizeChanged || changed;
       // setTimeout(() => {
       // const liveWindowOffset =
       //   this._correlation.offset +
       //   this._rate * ((performance.now() - this._correlation.time) / 1000);
       // item.item.setOffset(liveWindowOffset + item.offset, this._rate, jumped);
 
-      item.item.setOffset(
-        () =>
-          item.offset -
-          (this._correlation.offset +
-            this._rate *
-              -1 *
-              ((performance.now() - this._correlation.time) / 1000)),
-        // () => item.offset - this._windowOffset,
-        this._rate,
-        jumped
-      );
+      // TODO
+      item.item.setOffset(() => item.offset, 0, changed);
+
+      // item.item.setOffset(
+      //   () =>
+      //     item.offset -
+      //     (this._correlation.offset +
+      //       this._rate *
+      //         -1 *
+      //         ((performance.now() - this._correlation.time) / 1000)),
+      //   // () => item.offset - this._windowOffset,
+      //   this._rate,
+      //   jumped
+      // );
       // }, 0);
       return item.offset + item.item.getSize();
     }, null);
@@ -360,8 +373,8 @@ export class Marquee {
         this._onItemRequired.some((cb) => {
           return deferException(() => {
             nextItem = cb({
-              immediatelyFollowsPrevious:
-                this._nextItemImmediatelyFollowsPrevious,
+              immediatelyFollowsPrevious: this
+                ._nextItemImmediatelyFollowsPrevious,
             });
             return !!nextItem;
           });
