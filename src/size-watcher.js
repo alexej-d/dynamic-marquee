@@ -16,6 +16,7 @@ export class SizeWatcher {
       'ResizeObserver' in window
         ? new ResizeObserver((entries) => {
             const entry = entries[entries.length - 1];
+            if (!entry || (entry.borderBoxSize !== 0 && !entry.borderBoxSize)) return;
             const size = entry.borderBoxSize[0] || entry.borderBoxSize;
             this._width = size.inlineSize;
             this._height = size.blockSize;
